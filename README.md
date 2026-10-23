@@ -1,11 +1,13 @@
 # Clinic booking API
 
+[![CI](https://github.com/Itodo-S/clinic-booking-api/actions/workflows/ci.yml/badge.svg)](https://github.com/Itodo-S/clinic-booking-api/actions/workflows/ci.yml)
+
 An API that lets patients book clinic appointment slots, plus a web page that uses it. Built in TypeScript with Hono and Postgres, and deployed on Vercel with Neon.
 
 | | |
 |---|---|
-| **Web page** | https://clinic-booking-api.vercel.app |
-| **API base URL** | https://clinic-booking-api.vercel.app/api |
+| **Web page** | https://clinic-booking-itodo.vercel.app |
+| **API base URL** | https://clinic-booking-itodo.vercel.app/api |
 | **Spec** | [koyaacademy.com/assessment-api](https://koyaacademy.com/assessment-api) |
 
 All five levels are implemented, and each one has its own commit with tests.
