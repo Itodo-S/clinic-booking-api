@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
+import type pg from "pg";
 import {
   BOOKING_COLUMNS,
   type BookingRow,
@@ -7,12 +8,29 @@ import {
   parseNewBooking,
   toBooking,
 } from "../bookings";
-import { type Db, pool, withTransaction } from "../db";
+import { pool, withTransaction } from "../db";
 import { readJson } from "../http";
 import { idempotent, type Outcome } from "../idempotency";
+import { takeAttempt } from "../rate-limit";
+
+/** The normalised email a request is rate limited by, even if the rest of the body is invalid. */
+function emailOf(body: unknown) {
+  const email = (body as { email?: unknown } | null)?.email;
+  return typeof email === "string" ? email.trim().toLowerCase() : "";
+}
 
 /** Runs one booking attempt, turning expected failures into responses so they can be replayed. */
-async function attemptBooking(db: Db, body: unknown): Promise<Outcome> {
+async function attemptBooking(db: pg.PoolClient, body: unknown): Promise<Outcome> {
+  const email = emailOf(body);
+  const retryAfter = email ? await takeAttempt(db, email) : null;
+  if (retryAfter !== null) {
+    return {
+      status: 429,
+      body: { error: "too many booking attempts for this email, try again later" },
+      headers: { "Retry-After": String(retryAfter) },
+    };
+  }
+
   try {
     return { status: 201, body: await createBooking(db, parseNewBooking(body)) };
   } catch (error) {

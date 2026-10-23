@@ -36,7 +36,7 @@ export const slots = new Hono()
     }
 
     await withTransaction(async (db) => {
-      await db.query("TRUNCATE bookings, slots, idempotency_keys");
+      await db.query("TRUNCATE bookings, slots, idempotency_keys, booking_attempts");
       await db.query(
         `INSERT INTO slots (id, provider, start, "end", starts_at)
          SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::timestamptz[])`,

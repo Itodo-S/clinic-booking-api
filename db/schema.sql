@@ -38,3 +38,11 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
   response     jsonb NOT NULL,
   created_at   timestamptz NOT NULL DEFAULT now()
 );
+
+-- Recent POST /bookings attempts per email, for the sliding-window rate limit.
+CREATE TABLE IF NOT EXISTS booking_attempts (
+  email        text NOT NULL,
+  attempted_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+
+CREATE INDEX IF NOT EXISTS booking_attempts_email_idx ON booking_attempts (email, attempted_at);

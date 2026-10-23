@@ -60,6 +60,8 @@ export async function idempotent(
   }
 
   const outcome = await run();
+  // A rate-limited request never ran, so the client may retry it with the same key later.
+  if (outcome.status === 429) return outcome;
   await db.query(
     `INSERT INTO idempotency_keys (key, request_hash, status_code, response)
      VALUES ($1, $2, $3, $4)
