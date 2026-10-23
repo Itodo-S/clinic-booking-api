@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS bookings (
   name       text NOT NULL,
   email      text NOT NULL,
   status     text NOT NULL DEFAULT 'confirmed' CHECK (status IN ('confirmed', 'cancelled')),
-  created_at timestamptz NOT NULL DEFAULT now()
+  -- clock_timestamp() is the moment of insert (now() would be the start of the transaction).
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp()
 );
 
 -- The double-booking guarantee: at most one confirmed booking per slot,

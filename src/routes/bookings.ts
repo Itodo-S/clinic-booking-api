@@ -23,7 +23,43 @@ async function attemptBooking(db: Db, body: unknown): Promise<Outcome> {
   }
 }
 
+const encodeCursor = (seq: string) => Buffer.from(seq).toString("base64url");
+
+function decodeCursor(cursor: string) {
+  const seq = Buffer.from(cursor, "base64url").toString();
+  if (!/^\d{1,18}$/.test(seq)) throw new HTTPException(400, { message: "cursor is invalid" });
+  return seq;
+}
+
 export const bookings = new Hono()
+  .get("/", async (c) => {
+    const email = c.req.query("email")?.trim().toLowerCase();
+    if (!email) throw new HTTPException(400, { message: "email is required" });
+
+    const limitParam = c.req.query("limit") ?? "10";
+    const limit = Number(limitParam);
+    if (!/^\d+$/.test(limitParam) || limit < 1 || limit > 50) {
+      throw new HTTPException(400, { message: "limit must be an integer from 1 to 50" });
+    }
+    const cursor = c.req.query("cursor");
+    const after = cursor ? decodeCursor(cursor) : "0";
+
+    // Keyset pagination on the insert sequence: fetch one extra row to know if there's a next page.
+    const { rows } = await pool.query<BookingRow & { seq: string }>(
+      `SELECT seq, ${BOOKING_COLUMNS} FROM bookings
+       WHERE email = $1 AND seq > $2
+       ORDER BY seq
+       LIMIT $3`,
+      [email, after, limit + 1],
+    );
+    const page = rows.slice(0, limit);
+    const last = page.at(-1);
+    return c.json({
+      bookings: page.map(({ seq: _, ...row }) => toBooking(row)),
+      next_cursor: rows.length > limit && last ? encodeCursor(last.seq) : null,
+    });
+  })
+
   .post("/", async (c) => {
     const body = await readJson(c);
     const key = c.req.header("Idempotency-Key");
