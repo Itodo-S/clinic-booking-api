@@ -1,5 +1,6 @@
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
+import type { Db } from "./db";
 
 export interface BookingRow {
   id: string;
@@ -46,4 +47,25 @@ export function parseNewBooking(body: unknown): NewBooking {
   const parsed = newBooking.safeParse(body);
   if (!parsed.success) throw new HTTPException(400, { message: parsed.error.issues[0]?.message });
   return parsed.data;
+}
+
+/** Books a slot for a validated request. Throws HTTPException for 404, 400 and 409 outcomes. */
+export async function createBooking(db: Db, { slot_id, name, email }: NewBooking) {
+  const slot = await db.query<{ started: boolean }>(
+    "SELECT starts_at <= now() AS started FROM slots WHERE id = $1",
+    [slot_id],
+  );
+  if (!slot.rows[0]) throw new HTTPException(404, { message: "slot not found" });
+  if (slot.rows[0].started) throw new HTTPException(400, { message: "slot has already started" });
+
+  // The partial unique index allows one confirmed booking per slot. A racing insert waits
+  // for the other transaction, then skips the row, so exactly one request wins.
+  const { rows } = await db.query<BookingRow>(
+    `INSERT INTO bookings (slot_id, name, email) VALUES ($1, $2, $3)
+     ON CONFLICT (slot_id) WHERE status = 'confirmed' DO NOTHING
+     RETURNING ${BOOKING_COLUMNS}`,
+    [slot_id, name, email],
+  );
+  if (!rows[0]) throw new HTTPException(409, { message: "slot is already booked" });
+  return toBooking(rows[0]);
 }

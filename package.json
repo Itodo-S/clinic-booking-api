@@ -11,7 +11,7 @@
     "format": "biome check --write .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "db:migrate": "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -q -f db/schema.sql"
+    "db:migrate": "PGOPTIONS=--client-min-messages=warning psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -q -f db/schema.sql"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.2",

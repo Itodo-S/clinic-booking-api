@@ -28,3 +28,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS bookings_one_confirmed_per_slot
   ON bookings (slot_id) WHERE status = 'confirmed';
 
 CREATE INDEX IF NOT EXISTS bookings_email_seq_idx ON bookings (email, seq);
+
+-- Stored responses for POST /bookings, keyed by the client's Idempotency-Key.
+CREATE TABLE IF NOT EXISTS idempotency_keys (
+  key          text PRIMARY KEY,
+  request_hash text NOT NULL,
+  status_code  integer NOT NULL,
+  response     jsonb NOT NULL,
+  created_at   timestamptz NOT NULL DEFAULT now()
+);

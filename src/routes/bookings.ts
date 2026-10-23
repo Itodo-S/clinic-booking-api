@@ -1,30 +1,41 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
-import { BOOKING_COLUMNS, type BookingRow, parseNewBooking, toBooking } from "../bookings";
-import { pool } from "../db";
+import {
+  BOOKING_COLUMNS,
+  type BookingRow,
+  createBooking,
+  parseNewBooking,
+  toBooking,
+} from "../bookings";
+import { type Db, pool, withTransaction } from "../db";
 import { readJson } from "../http";
+import { idempotent, type Outcome } from "../idempotency";
+
+/** Runs one booking attempt, turning expected failures into responses so they can be replayed. */
+async function attemptBooking(db: Db, body: unknown): Promise<Outcome> {
+  try {
+    return { status: 201, body: await createBooking(db, parseNewBooking(body)) };
+  } catch (error) {
+    if (error instanceof HTTPException) {
+      return { status: error.status, body: { error: error.message } };
+    }
+    throw error;
+  }
+}
 
 export const bookings = new Hono()
   .post("/", async (c) => {
-    const { slot_id, name, email } = parseNewBooking(await readJson(c));
+    const body = await readJson(c);
+    const key = c.req.header("Idempotency-Key");
+    if (key && key.length > 255) {
+      throw new HTTPException(400, { message: "Idempotency-Key must be at most 255 characters" });
+    }
 
-    const slot = await pool.query<{ started: boolean }>(
-      "SELECT starts_at <= now() AS started FROM slots WHERE id = $1",
-      [slot_id],
-    );
-    if (!slot.rows[0]) throw new HTTPException(404, { message: "slot not found" });
-    if (slot.rows[0].started) throw new HTTPException(400, { message: "slot has already started" });
-
-    // The partial unique index allows one confirmed booking per slot. A racing insert waits
-    // for the other transaction, then skips the row, so exactly one request wins.
-    const { rows } = await pool.query<BookingRow>(
-      `INSERT INTO bookings (slot_id, name, email) VALUES ($1, $2, $3)
-       ON CONFLICT (slot_id) WHERE status = 'confirmed' DO NOTHING
-       RETURNING ${BOOKING_COLUMNS}`,
-      [slot_id, name, email],
-    );
-    if (!rows[0]) throw new HTTPException(409, { message: "slot is already booked" });
-    return c.json(toBooking(rows[0]), 201);
+    const outcome = await withTransaction((db) => {
+      const attempt = () => attemptBooking(db, body);
+      return key ? idempotent(db, key, body, attempt) : attempt();
+    });
+    return c.json(outcome.body, outcome.status, outcome.headers);
   })
 
   .get("/:id", async (c) => {
