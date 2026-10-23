@@ -10,12 +10,18 @@
     "lint": "biome check .",
     "format": "biome check --write .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:migrate": "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -q -f db/schema.sql"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.2",
     "@types/node": "^26.6.5",
+    "@types/pg": "^8.23.1",
     "typescript": "^7.0.2",
     "vitest": "^5.0.5"
+  },
+  "dependencies": {
+    "@vercel/functions": "^3.10.3",
+    "pg": "^8.23.1"
   }
 }
