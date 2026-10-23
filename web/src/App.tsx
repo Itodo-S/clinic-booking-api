@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { AlertTriangle, CalendarDays, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type Booking, type Slot } from "./api";
-import { BookingDetails } from "./components/BookingDetails";
 import { BookingForm } from "./components/BookingForm";
+import { Confirmation } from "./components/Confirmation";
+import { Header, type Tab } from "./components/Header";
 import { MyBookings } from "./components/MyBookings";
 import { SlotPicker } from "./components/SlotPicker";
-
-type Tab = "book" | "manage";
+import { Steps } from "./components/Steps";
+import { timeZone } from "./format";
+import { Button } from "./ui";
 
 /** Keeps the confirmation in the URL so a refresh or shared link shows it again. */
 function setBookingParam(id?: string) {
@@ -15,6 +18,20 @@ function setBookingParam(id?: string) {
   window.history.replaceState(null, "", url);
 }
 
+function SlotsSkeleton() {
+  return (
+    <div aria-hidden className="space-y-4 motion-safe:animate-pulse">
+      <div className="flex gap-2">
+        {[1, 2, 3, 4, 5].map((i) => (
+          <div key={i} className="h-24 w-20 rounded-xl bg-slate-200" />
+        ))}
+      </div>
+      <div className="h-44 rounded-2xl bg-slate-200" />
+      <div className="h-44 rounded-2xl bg-slate-200" />
+    </div>
+  );
+}
+
 export function App() {
   const [tab, setTab] = useState<Tab>("book");
   const [slots, setSlots] = useState<Slot[]>();
@@ -22,6 +39,7 @@ export function App() {
   const [selected, setSelected] = useState<Slot>();
   const [confirmed, setConfirmed] = useState<Booking>();
   const [notice, setNotice] = useState("");
+  const detailsRef = useRef<HTMLElement>(null);
 
   const loadSlots = useCallback(() => {
     api
@@ -50,7 +68,7 @@ export function App() {
   }
 
   function handleSlotTaken() {
-    setNotice("Sorry, someone has just booked that time. Please choose another.");
+    setNotice("Sorry, that time was just booked by someone else. Please choose another.");
     setSelected(undefined);
     loadSlots();
   }
@@ -65,124 +83,118 @@ export function App() {
     setBookingParam();
   }
 
-  const tabClass = (value: Tab) =>
-    `rounded-lg px-4 py-2 text-sm font-semibold transition ${tab === value ? "bg-white text-teal-800 shadow-sm" : "text-slate-600 hover:text-slate-900"}`;
-
   return (
-    <div className="min-h-screen">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-4 py-5">
-          <div className="flex items-center gap-3">
-            <div className="grid size-10 place-items-center rounded-xl bg-teal-700 text-xl font-bold text-white">
-              +
-            </div>
-            <div>
-              <h1 className="text-lg font-bold leading-tight">Clinic appointments</h1>
-              <p className="text-sm text-slate-500">Book a visit in under a minute</p>
-            </div>
-          </div>
-          <nav className="flex gap-1 rounded-xl bg-slate-100 p-1" aria-label="Sections">
-            <button
-              type="button"
-              className={tabClass("book")}
-              aria-current={tab === "book"}
-              onClick={() => setTab("book")}
-            >
-              Book
-            </button>
-            <button
-              type="button"
-              className={tabClass("manage")}
-              aria-current={tab === "manage"}
-              onClick={() => setTab("manage")}
-            >
-              My bookings
-            </button>
-          </nav>
-        </div>
-      </header>
+    <div className="flex min-h-screen flex-col">
+      <Header tab={tab} onTab={setTab} />
 
-      <main className="mx-auto max-w-5xl px-4 py-8">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 lg:py-10">
         {tab === "manage" ? (
           <MyBookings slotsById={slotsById} onChange={handleChange} />
-        ) : confirmed ? (
-          <section className="mx-auto max-w-xl space-y-4" aria-live="polite">
-            {confirmed.status === "confirmed" ? (
-              <div className="rounded-2xl bg-teal-700 p-5 text-white">
-                <h2 className="text-xl font-bold">You're booked in</h2>
-                <p className="text-teal-50">
-                  Keep your reference; you'll need it to look up or cancel this appointment.
+        ) : (
+          <>
+            <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+                  Book an appointment
+                </h1>
+                <p className="mt-1 text-slate-600">
+                  Choose a time that suits you. It takes less than a minute.
                 </p>
               </div>
+              <Steps current={confirmed ? 2 : selected ? 1 : 0} />
+            </div>
+
+            {confirmed ? (
+              <Confirmation
+                booking={confirmed}
+                slot={slotsById.get(confirmed.slot_id)}
+                onChange={handleChange}
+                onBookAnother={startOver}
+              />
             ) : (
-              <div className="rounded-2xl bg-slate-200 p-5">
-                <h2 className="text-xl font-bold">Appointment cancelled</h2>
-                <p className="text-slate-600">The time is free for someone else to book.</p>
+              <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_24rem]">
+                <section aria-labelledby="choose-time" className="min-w-0">
+                  <h2 id="choose-time" className="sr-only">
+                    Choose a time
+                  </h2>
+                  {notice && (
+                    <div
+                      role="status"
+                      className="mb-5 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"
+                    >
+                      <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0" />
+                      <p className="flex-1">{notice}</p>
+                      <button
+                        type="button"
+                        aria-label="Dismiss"
+                        onClick={() => setNotice("")}
+                        className="cursor-pointer rounded text-amber-700 hover:text-amber-900"
+                      >
+                        <X aria-hidden className="size-4" />
+                      </button>
+                    </div>
+                  )}
+                  {loadError ? (
+                    <div
+                      role="alert"
+                      className="flex flex-col items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-5 text-red-800"
+                    >
+                      <p>{loadError}</p>
+                      <Button variant="secondary" onClick={loadSlots}>
+                        Try again
+                      </Button>
+                    </div>
+                  ) : slots ? (
+                    <SlotPicker
+                      slots={slots}
+                      selectedId={selected?.id}
+                      onSelect={(slot) => {
+                        setSelected(slot);
+                        setNotice("");
+                        // On narrow screens the form sits below the times, so bring it into view.
+                        if (!window.matchMedia("(min-width: 1024px)").matches) {
+                          detailsRef.current?.scrollIntoView({ behavior: "smooth" });
+                        }
+                      }}
+                    />
+                  ) : (
+                    <SlotsSkeleton />
+                  )}
+                </section>
+
+                <aside ref={detailsRef} className="scroll-mt-24 lg:sticky lg:top-24">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <h2 className="mb-5 text-lg font-bold">Your details</h2>
+                    {selected ? (
+                      <BookingForm
+                        key={selected.id}
+                        slot={selected}
+                        onBooked={handleBooked}
+                        onSlotTaken={handleSlotTaken}
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center rounded-xl bg-slate-50 px-4 py-10 text-center">
+                        <CalendarDays aria-hidden className="size-9 text-brand-600" />
+                        <p className="mt-3 font-semibold">Select a time to continue</p>
+                        <p className="mt-1 text-sm text-slate-500">
+                          Pick a date and one of the available times.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </aside>
               </div>
             )}
-            <BookingDetails
-              booking={confirmed}
-              slot={slotsById.get(confirmed.slot_id)}
-              onChange={handleChange}
-            />
-            <button
-              type="button"
-              onClick={startOver}
-              className="font-medium text-teal-700 hover:underline"
-            >
-              ← Book another appointment
-            </button>
-          </section>
-        ) : (
-          <div className="grid gap-8 lg:grid-cols-[1fr_22rem]">
-            <section>
-              <h2 className="mb-4 text-xl font-bold">Choose a time</h2>
-              {notice && (
-                <p
-                  role="status"
-                  className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900"
-                >
-                  {notice}
-                </p>
-              )}
-              {loadError ? (
-                <div role="alert" className="rounded-xl bg-red-50 p-4 text-red-800">
-                  {loadError}{" "}
-                  <button type="button" onClick={loadSlots} className="font-semibold underline">
-                    Try again
-                  </button>
-                </div>
-              ) : slots ? (
-                <SlotPicker
-                  slots={slots}
-                  selectedId={selected?.id}
-                  onSelect={(slot) => {
-                    setSelected(slot);
-                    setNotice("");
-                  }}
-                />
-              ) : (
-                <p className="text-slate-500">Loading available times…</p>
-              )}
-            </section>
-            <aside className="lg:sticky lg:top-6 lg:self-start">
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <h2 className="mb-4 text-xl font-bold">Your details</h2>
-                {selected ? (
-                  <BookingForm
-                    key={selected.id}
-                    slot={selected}
-                    onBooked={handleBooked}
-                    onSlotTaken={handleSlotTaken}
-                  />
-                ) : (
-                  <p className="text-slate-500">Pick an available time to continue.</p>
-                )}
-              </div>
-            </aside>
-          </div>
+          </>
         )}
       </main>
+
+      <footer className="border-t border-slate-200 bg-white">
+        <div className="mx-auto flex max-w-6xl flex-col gap-1 px-4 py-5 text-sm text-slate-500 sm:flex-row sm:justify-between sm:px-6">
+          <p>© {new Date().getFullYear()} CarePoint Clinic</p>
+          <p>Times are shown in your time zone ({timeZone}).</p>
+        </div>
+      </footer>
     </div>
   );
 }

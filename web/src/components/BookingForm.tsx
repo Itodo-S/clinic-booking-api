@@ -1,6 +1,8 @@
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { AlertCircle, CalendarDays, Clock, Lock, Mail, User } from "lucide-react";
+import { type FormEvent, type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { ApiError, api, type Booking, type Slot } from "../api";
-import { EMAIL_PATTERN, formatDay, formatRange } from "../format";
+import { EMAIL_PATTERN, formatDate, formatRange } from "../format";
+import { Avatar, Button } from "../ui";
 
 interface Props {
   slot: Slot;
@@ -8,10 +10,48 @@ interface Props {
   onSlotTaken: () => void;
 }
 
+interface FieldProps {
+  label: string;
+  icon: ReactNode;
+  error?: string;
+  hint?: string;
+  input: (props: { id: string; "aria-invalid": boolean; "aria-describedby"?: string }) => ReactNode;
+}
+
+function Field({ label, icon, error, hint, input }: FieldProps) {
+  const id = useId();
+  const noteId = `${id}-note`;
+  return (
+    <div>
+      <label htmlFor={id} className="mb-1.5 block text-sm font-medium text-slate-700">
+        {label}
+      </label>
+      <div className="relative">
+        <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400">
+          {icon}
+        </span>
+        {input({
+          id,
+          "aria-invalid": Boolean(error),
+          "aria-describedby": error || hint ? noteId : undefined,
+        })}
+      </div>
+      {(error || hint) && (
+        <p id={noteId} className={`mt-1.5 text-xs ${error ? "text-red-600" : "text-slate-500"}`}>
+          {error ?? hint}
+        </p>
+      )}
+    </div>
+  );
+}
+
+const inputClass =
+  "block min-h-11 w-full rounded-lg border border-slate-300 bg-white py-2 pr-3 pl-10 text-[15px] shadow-xs outline-none transition-colors duration-200 placeholder:text-slate-400 focus:border-brand-600 focus:ring-3 focus:ring-brand-600/15 aria-invalid:border-red-500 aria-invalid:focus:ring-red-500/15";
+
 export function BookingForm({ slot, onBooked, onSlotTaken }: Props) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [error, setError] = useState("");
+  const [errors, setErrors] = useState<{ name?: string; email?: string; form?: string }>({});
   const [submitting, setSubmitting] = useState(false);
   const [retryAt, setRetryAt] = useState(0);
   const [now, setNow] = useState(Date.now());
@@ -33,10 +73,13 @@ export function BookingForm({ slot, onBooked, onSlotTaken }: Props) {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!name.trim()) return setError("Please enter your name.");
-    if (!EMAIL_PATTERN.test(email.trim())) return setError("Please enter a valid email address.");
+    const found = {
+      name: name.trim() ? undefined : "Please enter your full name.",
+      email: EMAIL_PATTERN.test(email.trim()) ? undefined : "Please enter a valid email address.",
+    };
+    setErrors(found);
+    if (found.name || found.email) return;
 
-    setError("");
     setSubmitting(true);
     try {
       onBooked(await api.book({ slot_id: slot.id, name, email }, idempotencyKey.current));
@@ -46,62 +89,99 @@ export function BookingForm({ slot, onBooked, onSlotTaken }: Props) {
       if (err.status === 429) {
         setRetryAt(Date.now() + err.retryAfter * 1000);
         setNow(Date.now());
-        return setError("Too many booking attempts for this email. Please wait a moment.");
+        return setErrors({ form: "Too many booking attempts for this email. Please wait." });
       }
-      setError(err.message);
+      setErrors({ form: err.message });
     } finally {
       setSubmitting(false);
     }
   }
 
-  const inputClass =
-    "mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 shadow-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20";
-
   return (
-    <form onSubmit={submit} noValidate className="space-y-4">
-      <div className="rounded-xl bg-teal-50 p-4 text-teal-900">
-        <p className="text-sm">{formatDay(slot.start)}</p>
-        <p className="text-lg font-semibold tabular-nums">{formatRange(slot.start, slot.end)}</p>
-        <p className="text-sm">with {slot.provider}</p>
+    <form onSubmit={submit} noValidate className="space-y-5">
+      <div className="rounded-xl border border-brand-100 bg-brand-50/60 p-4">
+        <div className="flex items-center gap-3">
+          <Avatar name={slot.provider} />
+          <div>
+            <p className="text-xs font-medium tracking-wide text-brand-800 uppercase">
+              Appointment with
+            </p>
+            <p className="font-semibold">{slot.provider}</p>
+          </div>
+        </div>
+        <dl className="mt-3 space-y-1.5 text-sm text-slate-700">
+          <div className="flex items-center gap-2">
+            <dt>
+              <CalendarDays aria-label="Date" className="size-4 text-brand-700" />
+            </dt>
+            <dd>{formatDate(slot.start)}</dd>
+          </div>
+          <div className="flex items-center gap-2">
+            <dt>
+              <Clock aria-label="Time" className="size-4 text-brand-700" />
+            </dt>
+            <dd className="tabular-nums">{formatRange(slot.start, slot.end)}</dd>
+          </div>
+        </dl>
       </div>
 
-      <label className="block text-sm font-medium text-slate-700">
-        Full name
-        <input
-          className={inputClass}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          autoComplete="name"
-          required
-        />
-      </label>
-      <label className="block text-sm font-medium text-slate-700">
-        Email
-        <input
-          className={inputClass}
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          autoComplete="email"
-          required
-        />
-      </label>
+      <Field
+        label="Full name"
+        icon={<User aria-hidden className="size-4" />}
+        error={errors.name}
+        input={(props) => (
+          <input
+            {...props}
+            className={inputClass}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoComplete="name"
+          />
+        )}
+      />
+      <Field
+        label="Email address"
+        icon={<Mail aria-hidden className="size-4" />}
+        error={errors.email}
+        hint="We'll use this to find your appointments."
+        input={(props) => (
+          <input
+            {...props}
+            type="email"
+            className={inputClass}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="email"
+            placeholder="name@example.com"
+          />
+        )}
+      />
 
-      <p role="alert" aria-live="polite" className="min-h-5 text-sm text-red-700">
-        {error}
-      </p>
+      <div aria-live="polite">
+        {errors.form && (
+          <p className="flex items-start gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+            <AlertCircle aria-hidden className="mt-0.5 size-4 shrink-0" />
+            {errors.form}
+          </p>
+        )}
+      </div>
 
-      <button
+      <Button
         type="submit"
-        disabled={submitting || waitSeconds > 0}
-        className="w-full rounded-lg bg-teal-700 px-4 py-2.5 font-semibold text-white shadow-sm transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:bg-slate-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
+        loading={submitting}
+        disabled={waitSeconds > 0}
+        className="min-h-11 w-full text-[15px]"
       >
         {submitting
-          ? "Booking…"
+          ? "Confirming…"
           : waitSeconds > 0
             ? `Try again in ${waitSeconds}s`
-            : "Confirm booking"}
-      </button>
+            : "Confirm appointment"}
+      </Button>
+      <p className="flex items-center justify-center gap-1.5 text-xs text-slate-500">
+        <Lock aria-hidden className="size-3.5" />
+        Your details are only used to manage this appointment.
+      </p>
     </form>
   );
 }
