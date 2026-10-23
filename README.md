@@ -4,26 +4,25 @@
 
 An API that lets patients book clinic appointment slots, plus a web page that uses it. Built in TypeScript with Hono and Postgres, and deployed on Vercel with Neon.
 
-| | |
-|---|---|
-| **Web page** | https://clinic-booking-itodo.vercel.app |
-| **API base URL** | https://clinic-booking-itodo.vercel.app/api |
-| **Spec** | [koyaacademy.com/assessment-api](https://koyaacademy.com/assessment-api) |
+|                  |                                                                          |
+| ---------------- | ------------------------------------------------------------------------ |
+| **Web page**     | https://clinic-booking-itodo.vercel.app                                  |
+| **API base URL** | https://clinic-booking-itodo.vercel.app/api                              |
+| **Spec**         | [koyaacademy.com/assessment-api](https://koyaacademy.com/assessment-api) |
 
 All five levels are implemented, and each one has its own commit with tests.
 
-| Level | What it does | Where |
-|---|---|---|
-| 1 | Reset slots, list slots, book a slot, look up a booking | `src/routes/slots.ts`, `src/routes/bookings.ts` |
-| 2 | `X-API-Key` auth (401). Booking validation: 400 for bad input, 404 for an unknown slot, 400 for a slot that has already started | `src/auth.ts`, `src/bookings.ts` |
-| 3 | No double booking, even under simultaneous requests (409). Cancellation | `db/schema.sql`, `src/bookings.ts` |
-| 4 | `Idempotency-Key` retries (replay or 422). Cursor pagination of a person's bookings | `src/idempotency.ts`, `src/routes/bookings.ts` |
-| 5 | At most 5 booking attempts per email per minute (429 + `Retry-After`) | `src/rate-limit.ts` |
+| Level | What it does                                                                                                                    | Where                                           |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| 1     | Reset slots, list slots, book a slot, look up a booking                                                                         | `src/routes/slots.ts`, `src/routes/bookings.ts` |
+| 2     | `X-API-Key` auth (401). Booking validation: 400 for bad input, 404 for an unknown slot, 400 for a slot that has already started | `src/auth.ts`, `src/bookings.ts`                |
+| 3     | No double booking, even under simultaneous requests (409). Cancellation                                                         | `db/schema.sql`, `src/bookings.ts`              |
+| 4     | `Idempotency-Key` retries (replay or 422). Cursor pagination of a person's bookings                                             | `src/idempotency.ts`, `src/routes/bookings.ts`  |
+| 5     | At most 5 booking attempts per email per minute (429 + `Retry-After`)                                                           | `src/rate-limit.ts`                             |
 
 ## Design decisions
 
 **The database enforces every guarantee.** The API runs on serverless functions, so many instances can serve requests at once. Locks or counters held in memory would only protect one instance. Each guarantee is therefore enforced by Postgres:
-
 - **No double booking.** A partial unique index allows only one confirmed booking per slot: `UNIQUE (slot_id) WHERE status = 'confirmed'`. Bookings are inserted with `ON CONFLICT … DO NOTHING`. When requests race, Postgres makes the later inserts wait for the first and then skips them, so exactly one gets 201 and the rest get 409. Cancelling sets the status to `cancelled`, which takes the row out of the index and frees the slot. The test suite fires 25 simultaneous bookings at one slot and checks for exactly one 201.
 - **Atomic cancellation.** Cancelling runs `UPDATE … WHERE status = 'confirmed' RETURNING`. Two simultaneous cancels give one 200 and one 409.
 - **Idempotency.** `POST /bookings` runs in a single transaction. When an `Idempotency-Key` is sent, the transaction first takes an advisory lock on that key, so concurrent retries queue behind the first request instead of racing it.
@@ -39,7 +38,6 @@ All five levels are implemented, and each one has its own commit with tests.
   - A sliding window is used because a fixed per-minute bucket would allow up to 10 bookings in two seconds around a minute boundary.
 
 **Validation order** for `POST /bookings`:
-
 1. API key (401)
 2. Malformed JSON (400)
 3. Idempotency replay or mismatch (422)
@@ -70,14 +68,14 @@ The page itself:
 
 All requests need the `X-API-Key` header.
 
-| Method | Path | Notes |
-|---|---|---|
-| `POST` | `/reset` | `{"slots": [...]}`. Deletes every booking and replaces all slots |
-| `GET` | `/slots?provider=` | Earliest first, with `available` |
-| `POST` | `/bookings` | `{"slot_id", "name", "email"}`, optional `Idempotency-Key` header. Returns 201 |
-| `GET` | `/bookings?email=&limit=&cursor=` | That person's bookings, oldest first, as `{bookings, next_cursor}` |
-| `GET` | `/bookings/:id` | 200 or 404 |
-| `DELETE` | `/bookings/:id` | Cancels the booking. 200, 404, or 409 if already cancelled |
+| Method   | Path                              | Notes                                                                          |
+| -------- | --------------------------------- | ------------------------------------------------------------------------------ |
+| `POST`   | `/reset`                          | `{"slots": [...]}`. Deletes every booking and replaces all slots               |
+| `GET`    | `/slots?provider=`                | Earliest first, with `available`                                               |
+| `POST`   | `/bookings`                       | `{"slot_id", "name", "email"}`, optional `Idempotency-Key` header. Returns 201 |
+| `GET`    | `/bookings?email=&limit=&cursor=` | That person's bookings, oldest first, as `{bookings, next_cursor}`             |
+| `GET`    | `/bookings/:id`                   | 200 or 404                                                                     |
+| `DELETE` | `/bookings/:id`                   | Cancels the booking. 200, 404, or 409 if already cancelled                     |
 
 ```sh
 curl -X POST "$BASE/bookings" -H "X-API-Key: $KEY" -H "Content-Type: application/json" \
