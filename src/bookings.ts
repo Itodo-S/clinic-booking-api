@@ -1,6 +1,6 @@
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
-import type { Db } from "./db";
+import type { Db } from "./db.js";
 
 export interface BookingRow {
   id: string;

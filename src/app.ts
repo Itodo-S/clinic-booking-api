@@ -1,9 +1,9 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
-import { requireApiKey } from "./auth";
-import { bookings } from "./routes/bookings";
-import { slots } from "./routes/slots";
-import { webProxy } from "./web-proxy";
+import { requireApiKey } from "./auth.js";
+import { bookings } from "./routes/bookings.js";
+import { slots } from "./routes/slots.js";
+import { webProxy } from "./web-proxy.js";
 
 const api = new Hono().use(requireApiKey).route("/", slots).route("/bookings", bookings);
 

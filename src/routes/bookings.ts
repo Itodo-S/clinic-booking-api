@@ -7,11 +7,11 @@ import {
   createBooking,
   parseNewBooking,
   toBooking,
-} from "../bookings";
-import { pool, withTransaction } from "../db";
-import { readJson } from "../http";
-import { idempotent, type Outcome } from "../idempotency";
-import { takeAttempt } from "../rate-limit";
+} from "../bookings.js";
+import { pool, withTransaction } from "../db.js";
+import { readJson } from "../http.js";
+import { idempotent, type Outcome } from "../idempotency.js";
+import { takeAttempt } from "../rate-limit.js";
 
 /** The normalised email a request is rate limited by, even if the rest of the body is invalid. */
 function emailOf(body: unknown) {

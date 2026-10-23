@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
-import { pool, withTransaction } from "../db";
-import { readJson } from "../http";
+import { pool, withTransaction } from "../db.js";
+import { readJson } from "../http.js";
 
 const timestamp = (field: string) =>
   z
