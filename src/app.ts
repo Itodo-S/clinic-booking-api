@@ -3,11 +3,16 @@ import { HTTPException } from "hono/http-exception";
 import { requireApiKey } from "./auth";
 import { bookings } from "./routes/bookings";
 import { slots } from "./routes/slots";
+import { webProxy } from "./web-proxy";
 
 const api = new Hono().use(requireApiKey).route("/", slots).route("/bookings", bookings);
 
-export const app = new Hono()
+export const app: Hono = new Hono()
   .route("/api", api)
+  .route(
+    "/web-api",
+    webProxy((request) => app.fetch(request)),
+  )
   .notFound((c) => c.json({ error: "not found" }, 404))
   .onError((err, c) => {
     if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
